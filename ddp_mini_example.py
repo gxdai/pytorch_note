@@ -1,0 +1,163 @@
+import os
+from datetime import datetime
+import argparse
+import torch.multiprocessing as mp
+import torchvision
+import torchvision.transforms as transforms
+import torch
+import torch.nn as nn
+import torch.distributed as dist
+from torch.nn.parallel import DistributedDataParallel as DDP
+
+
+
+
+class ConvNet(nn.Module):
+
+    def __init__(self, num_classes=10):
+        super().__init__()
+        self.layer1 = nn.Sequential(
+                nn.Conv2d(1, 16, kernel_size=5, stride=1, padding=2),
+                nn.BatchNorm2d(16),
+                nn.ReLU(),
+                nn.MaxPool2d(kernel_size=2, stride=2)
+        )
+
+        self.layer2 = nn.Sequential(
+            nn.Conv2d(16, 32, kernel_size=5, stride=1, padding=2),
+            nn.BatchNorm2d(32),
+            nn.ReLU(),
+            nn.MaxPool2d(kernel_size=2, stride=2)
+        )
+
+        self.fc = nn.Linear(7 ** 2 * 32, num_classes)
+
+
+    def forward(self, x):
+        out = self.layer1(x)
+        out = self.layer2(out)
+        out = out.reshape(out.size(0), -1)
+        return self.fc(out)
+
+
+def train(gpu, args):
+
+
+
+    rank = args.nr * args.gpus + gpu
+
+    dist.init_process_group(
+        backend="nccl",
+        init_method="env://",
+        world_size=args.world_size,
+        rank=rank
+    )
+
+    torch.manual_seed(0)
+    model = ConvNet()
+    torch.cuda.set_device(gpu)
+    model.cuda(gpu)
+    batch_size = 100
+
+    criterion = nn.CrossEntropyLoss().cuda(gpu)
+    optimizer = torch.optim.SGD(model.parameters(), 1e-4)
+
+    model = nn.parallel.DistributedDataParallel(
+        model,
+        device_ids=[gpu]
+    )
+
+    train_dataset = torchvision.datasets.MNIST(
+        root="./data",
+        train=True,
+        transform=transforms.ToTensor(),
+        download=False
+    )
+    train_sampler = torch.utils.data.distributed.DistributedSampler(
+        train_dataset,
+        num_replicas=args.world_size,
+        rank=rank
+    )
+
+
+
+    train_loader = torch.utils.data.DataLoader(
+        dataset=train_dataset,
+        batch_size=batch_size,
+        shuffle=False,
+        num_workers=2,
+        pin_memory=True,
+        sampler=train_sampler
+    )
+
+    start = datetime.now()
+    total_step = len(train_loader)
+    for epoch in range(args.epochs):
+        for i, (images, labels) in enumerate(train_loader):
+            images = images.cuda(non_blocking=True)
+            labels = labels.cuda(non_blocking=True)
+
+            outputs = model(images)
+            loss = criterion(outputs, labels)
+            optimizer.zero_grad()
+            loss.backward()
+            optimizer.step()
+
+            if (i + 1) % 5 == 0 and i > 0:
+                print("Epoch [{}/{}], Step [{}/{}], Loss: {:.4f}".format(
+                    epoch + 1,  args.epochs, i + 1, total_step, loss.item())
+            )
+
+    if gpu == 0:
+        print("Training complete in {}".format(datetime.now() - start))
+
+
+
+
+def main():
+    parser = argparse.ArgumentParser("DDP")
+    parser.add_argument("-n", "--nodes", default=1, type=int, metavar="N")
+    parser.add_argument("-g", "--gpus", type=int, default=8)
+    parser.add_argument("-nr", "--nr", default=0, type=int)
+    parser.add_argument("--epochs", default=20, type=int)
+
+    args = parser.parse_args()
+
+
+    # If the gpus are on the same matchine, you can set MASTER_ADDR="127.0.0.1"
+    # MASTER_PORT="any number".
+
+    os.environ["MASTER_ADDR"] = "127.0.0.1"
+    os.environ["MASTER_PORT"] = "29600"
+
+
+    args.world_size = args.nodes * args.gpus
+
+
+    """
+    torch.multiprocessing.spawn(fn, args=(), nprocs=1, join=True, daemon=False, start_method='spawn')
+
+
+    Spawns nprocs processes that run fn with args.
+
+    # spawn is different from Process.
+
+
+    for mp.spawn,
+
+    fn(i, args): first argument will be the process index, and the second argument will be the args to be executed...
+
+
+
+
+    """
+
+    mp.spawn(train, nprocs=args.gpus, args=(args,))
+
+
+
+if __name__ == "__main__":
+    main()
+
+    # net = ConvNet()
+    # print(net)
