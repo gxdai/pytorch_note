@@ -1,0 +1,72 @@
+---
+doe: "a deer, a female deer"
+ray: "a drop of golden sun"
+pi: 3.14159
+xmas: true
+french-hens: 3
+calling-birds:
+  - huey: hello
+  - dewey
+  - louie
+  - fred
+xmas-fifth-day:
+  calling-birds: four
+  french-hens: 3
+  golden-rings: 5
+  partridges:
+    count: 1
+    location: "a pear tree"
+  turtle-doves: two
+nan: nan
+inf: inf
+nan_: .nan
+inf_: .inf
+foo: "this is not a normal string\n"
+bar: this is not a normal string\n
+# multiple lines, but interpreted as one line
+ml: >
+   mulit
+   lline result
+   hhaa
+   dkhel llow world
+
+# multiple lines as it it.
+ml2: |
+   mulit
+   lline result
+   hhaa
+   dkhel llow world
+
+# Get None........ in yaml.
+null_str: ~
+null_str2: null
+
+# boolean
+# True Values...
+bool_true1: True
+bool_true2: true
+bool_true3: On
+bool_true4: on
+
+# boolean
+# False Values.
+bool_false1: False
+bool_false2: false
+bool_false3: Off
+bool_false4: off
+names: ["hell", "word", "care"]
+names2: [hell, world, name]
+
+# different ways to get a list/array in yaml.
+names3:
+  - hell
+  - world
+  - test
+
+---
+bar: foo
+foo: bar
+
+---
+one: two
+three: four
